@@ -191,3 +191,176 @@
                         htmlText = htmlText.split(`'${relativePath}'`).join(`'${blobUrl}'`);
                         htmlText = htmlText.split(`"./${relativePath}"`).join(`"${blobUrl}"`);
                         htmlText = htmlText.split(`'./${relativePath}'`).join(`'${blobUrl}'`);
+                        
+                        htmlText = htmlText.split(`url(${relativePath})`).join(`url(${blobUrl})`);
+                        htmlText = htmlText.split(`url('${relativePath}')`).join(`url('${blobUrl}')`);
+                        htmlText = htmlText.split(`url("${relativePath}")`).join(`url("${blobUrl}")`);
+                    }
+
+                    const size = getBannerSize(htmlText);
+                    htmlText = injectFreezeScript(htmlText);
+                    
+                    const displayName = htmlFiles.length === 1 ? file.name : `${file.name} - ${filename.split('/').pop()}`;
+                    renderBanner(htmlText, displayName, size);
+                }
+            } catch (error) {
+                alert("Lỗi khi đọc file: " + file.name);
+            }
+        }
+
+        // Bóc tách nhanh Size từ HTML Text
+        function getBannerSize(html) {
+            let width = 300, height = 250;
+            const metaMatch = html.match(/<meta\s+[^>]*name=["']ad\.size["'][^>]*>/i);
+            if (metaMatch) {
+                const contentMatch = metaMatch[0].match(/content=["']([^"']+)["']/i);
+                if (contentMatch) {
+                    const w = contentMatch[1].match(/width\s*=\s*(\d+)/i);
+                    const h = contentMatch[1].match(/height\s*=\s*(\d+)/i);
+                    if (w) width = parseInt(w[1], 10);
+                    if (h) height = parseInt(h[1], 10);
+                }
+            } else {
+                const canvasMatch = html.match(/<canvas[^>]*width=["'](\d+)["'][^>]*height=["'](\d+)["'][^>]*>/i);
+                if (canvasMatch) { width = parseInt(canvasMatch[1], 10); height = parseInt(canvasMatch[2], 10); }
+            }
+            return { width, height };
+        }
+
+        function injectFreezeScript(html) {
+            const script = `
+            <script>
+                window.freezeBanner = function() {
+                    const style = document.createElement('style');
+                    style.innerHTML = '*, *::before, *::after { animation-play-state: paused !important; transition: none !important; }';
+                    document.head.appendChild(style);
+                    if(window.gsap) window.gsap.globalTimeline.pause();
+                    if(window.TweenMax) window.TweenMax.pauseAll();
+                    if(window.createjs && window.createjs.Ticker) window.createjs.Ticker.paused = true;
+                };
+            <\/script>`;
+            return html.toLowerCase().includes('<head>') ? html.replace(/<head>/i, '<head>' + script) : script + html;
+        }
+
+        function renderBanner(htmlContent, displayName, initSize) {
+            const item = document.createElement('div');
+            item.className = 'banner-item';
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'iframe-wrapper';
+            wrapper.style.width = initSize.width + 'px';
+            wrapper.style.height = initSize.height + 'px';
+
+            let iframe = document.createElement('iframe');
+            iframe.srcdoc = htmlContent;
+            iframe.scrolling = "no";
+            
+            // XỬ LÝ FIT KÍCH THƯỚC: Bắt chính xác lại DOM Size sau khi load
+            iframe.onload = () => {
+                try {
+                    const doc = iframe.contentWindow.document;
+                    let w = initSize.width, h = initSize.height;
+                    const meta = doc.querySelector('meta[name="ad.size"]');
+                    if (meta) {
+                        const wM = meta.content.match(/width\s*=\s*(\d+)/i);
+                        const hM = meta.content.match(/height\s*=\s*(\d+)/i);
+                        if(wM && hM) { w = parseInt(wM[1]); h = parseInt(hM[1]); }
+                    } else {
+                        const canvas = doc.querySelector('canvas');
+                        if (canvas && canvas.width) { w = canvas.width; h = canvas.height; }
+                    }
+                    wrapper.style.width = w + 'px';
+                    wrapper.style.height = h + 'px';
+                    controls.style.width = w + 'px';
+                } catch(e) {}
+            };
+
+            wrapper.appendChild(iframe);
+
+            const controls = document.createElement('div');
+            controls.className = 'controls-row';
+            controls.style.width = initSize.width + 'px';
+
+            // 1. Tên File có Marquee (Chạy qua chạy lại)
+            const title = document.createElement('div');
+            title.className = 'name-box';
+            title.innerText = displayName;
+            title.addEventListener('mouseenter', function() {
+                if (this.scrollWidth > this.clientWidth) {
+                    this.style.textOverflow = 'clip';
+                    const dist = this.scrollWidth - this.clientWidth;
+                    this.style.setProperty('--scroll-dist', `-${dist}px`);
+                    this.style.animation = `scrollText ${dist * 20}ms linear infinite alternate`;
+                }
+            });
+            title.addEventListener('mouseleave', function() {
+                this.style.animation = 'none';
+                this.style.textOverflow = 'ellipsis';
+            });
+
+            // 2. Nút Chụp Ảnh (Icon Camera)
+            const btnCapture = document.createElement('button');
+            btnCapture.className = 'btn-icon';
+            btnCapture.title = "Đóng băng & Chụp Frame";
+            btnCapture.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
+            btnCapture.onclick = async () => {
+                try {
+                    if(iframe.contentWindow.freezeBanner) iframe.contentWindow.freezeBanner();
+                    wrapper.style.border = 'none'; // Ẩn viền đen khi chụp
+                    const canvas = await html2canvas(wrapper, { useCORS: true, allowTaint: true, backgroundColor: null, scale: 1 });
+                    wrapper.style.border = '1px solid #000'; // Hiện lại viền
+                    
+                    const link = document.createElement('a');
+                    link.download = `capture_${Date.now()}.png`;
+                    link.href = canvas.toDataURL('image/png');
+                    link.click();
+                } catch (err) {
+                    wrapper.style.border = '1px solid #000';
+                    alert("Lỗi chụp ảnh: " + err.message);
+                }
+            };
+
+            // 3. Nút Refresh (Icon Vòng lặp)
+            const btnRefresh = document.createElement('button');
+            btnRefresh.className = 'btn-icon';
+            btnRefresh.title = "Chạy lại banner";
+            btnRefresh.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path></svg>';
+            btnRefresh.onclick = () => {
+                const newIframe = document.createElement('iframe');
+                newIframe.srcdoc = htmlText;
+                newIframe.scrolling = "no";
+                iframe.replaceWith(newIframe);
+                iframe = newIframe;
+                // Gọi lại logic onLoad cho iframe mới
+                iframe.onload = () => {
+                    try {
+                        const canvas = iframe.contentWindow.document.querySelector('canvas');
+                        if (canvas && canvas.width) {
+                            wrapper.style.width = canvas.width + 'px';
+                            wrapper.style.height = canvas.height + 'px';
+                            controls.style.width = canvas.width + 'px';
+                        }
+                    } catch(e) {}
+                };
+            };
+
+            // 4. Nút Đóng (Icon X)
+            const btnClose = document.createElement('button');
+            btnClose.className = 'btn-icon';
+            btnClose.title = "Tắt banner";
+            btnClose.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
+            btnClose.onclick = () => item.remove();
+
+            // Sắp xếp thứ tự như yêu cầu: Name, Capture, Refresh, Close
+            controls.appendChild(title);
+            controls.appendChild(btnCapture);
+            controls.appendChild(btnRefresh);
+            controls.appendChild(btnClose);
+
+            item.appendChild(wrapper);
+            item.appendChild(controls);
+            gallery.appendChild(item); 
+        }
+    </script>
+</body>
+</html>
