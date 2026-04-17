@@ -84,19 +84,41 @@ dropzone.addEventListener('drop', async (e) => {
   const zip = await JSZip.loadAsync(file);
   viewer.innerHTML = '';
 
-  const files = [];
+  const fileMap = {};
 
-  zip.forEach((relativePath, zipEntry) => {
-    if (relativePath.endsWith('.html')) {
-      files.push(zipEntry);
+  // Create Blob URLs for ALL files
+  await Promise.all(Object.keys(zip.files).map(async (path) => {
+    const entry = zip.files[path];
+    if (!entry.dir) {
+      const blob = await entry.async('blob');
+      fileMap[path] = URL.createObjectURL(blob);
     }
-  });
+  }));
 
-  for (const entry of files) {
-    const content = await entry.async('string');
+  const htmlFiles = Object.keys(zip.files).filter(p => p.endsWith('.html'));
+
+  for (const path of htmlFiles) {
+    const entry = zip.files[path];
+    let content = await entry.async('string');
+
+    // Fix relative paths
+    const basePath = path.substring(0, path.lastIndexOf('/') + 1);
+
+    content = content.replace(/(src|href)=["']([^"']+)["']/g, (match, attr, url) => {
+      if (url.startsWith('http') || url.startsWith('data:')) return match;
+
+      const fullPath = basePath + url;
+      const normalized = fullPath.replace(/\.\//g, '');
+
+      if (fileMap[normalized]) {
+        return `${attr}="${fileMap[normalized]}"`;
+      }
+
+      return match;
+    });
 
     const iframe = document.createElement('iframe');
-    iframe.width = 300;
+    iframe.width = 320;
     iframe.height = 250;
 
     const blob = new Blob([content], { type: 'text/html' });
