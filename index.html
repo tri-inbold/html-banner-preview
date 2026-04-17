@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Banner Viewer</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0e0e0f;
+      --surface: #161618;
+      --border: #2a2a2e;
+      --accent: #c8f03e;
+      --accent2: #f03ec8;
+      --text: #e8e8e6;
+      --muted: #666;
+      --radius: 12px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      padding: 28px 36px;
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    header h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.5rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--accent);
+    }
+    header span {
+      font-size: 0.7rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    /* ── Drop Zone ── */
+    #drop-area {
+      margin: 48px auto;
+      width: min(520px, 90vw);
+      aspect-ratio: 16/7;
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+    #drop-area::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 50% 120%, rgba(200,240,62,0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    #drop-area.dragover, #drop-area:hover {
+      border-color: var(--accent);
+      background: rgba(200,240,62,0.04);
+    }
+    #drop-area.dragover { border-style: solid; }
+
+    #drop-icon {
+      width: 48px;
+      height: 48px;
+      display: grid;
+      place-items: center;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      transition: border-color 0.2s;
+    }
+    #drop-area:hover #drop-icon, #drop-area.dragover #drop-icon {
+      border-color: var(--accent);
+    }
+    #drop-icon svg { color: var(--accent); }
+
+    #drop-label {
+      font-size: 0.82rem;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.6;
+    }
+    #drop-label strong { color: var(--text); font-weight: 500; }
+
+    #file-input { display: none; }
+
+    #drop-btn {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 8px 20px;
+      border: 1.5px solid var(--border);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text);
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    #drop-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Error ── */
+    #error-msg {
+      display: none;
+      margin: 0 auto 20px;
+      width: min(520px, 90vw);
+      background: rgba(240, 62, 62, 0.1);
+      border: 1px solid rgba(240,62,62,0.3);
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 0.78rem;
+      color: #f03e3e;
+    }
+
+    /* ── Stats bar ── */
+    #stats-bar {
+      display: none;
+      align-items: center;
+      gap: 24px;
+      padding: 0 36px 20px;
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    #stats-bar b { color: var(--accent); font-weight: 500; }
+    #stats-bar button {
+      margin-left: auto;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.72rem;
+      letter-spacing: 0.06em;
+      padding: 6px 14px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    #stats-bar button:hover { border-color: var(--accent2); color: var(--accent2); }
+
+    /* ── Filter bar ── */
+    #filter-bar {
+      display: none;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 0 36px 24px;
+      font-size: 0.72rem;
+    }
+    #filter-bar label { color: var(--muted); align-self: center; letter-spacing: 0.06em; text-transform: uppercase; }
+    .filter-chip {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      padding: 4px 14px;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .filter-chip:hover, .filter-chip.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(200,240,62,0.06);
+    }
+
+    /* ── Grid ── */
+    #gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 24px;
+      padding: 0 36px 60px;
+    }
+
+    .banner-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      transition: border-color 0.2s, transform 0.2s;
+      animation: fadeUp 0.35s ease both;
+    }
+    .banner-card:hover { border-color: #444; transform: translateY(-2px); }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .card-header {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .card-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+    .card-title {
+      font-size: 0.72rem;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+    }
+    .card-size-tag {
+      font-size: 0.65rem;
+      padding: 2px 8px;
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+
+    .card-frame-wrap {
+      position: relative;
+      background: #fff;
+      overflow: hidden;
+    }
+    /* checker for transparent banners */
+    .card-frame-wrap::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(45deg, #ddd 25%, transparent 25%),
+        linear-gradient(-45deg, #ddd 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #ddd 75%),
+        linear-gradient(-45deg, transparent 75%, #ddd 75%);
+      background-size: 12px 12px;
+      background-position: 0 0, 0 6px, 6px -6px, -6px 0px;
+      opacity: 0.4;
+      pointer-events: none;
+    }
+    .card-frame-wrap iframe {
+      display: block;
+      border: none;
+      width: 100%;
+      max-width: 100%;
+    }
+
+    .card-footer {
+      padding: 8px 14px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .card-path {
+      font-size: 0.65rem;
+      color: #3a3a3f;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+    }
+    .open-btn {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.65rem;
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      text-decoration: none;
+      transition: border-color 0.15s, color 0.15s;
+      flex-shrink: 0;
+    }
+    .open-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Loading ── */
+    #loading {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding: 60px;
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+    .spinner {
+      width: 32px; height: 32px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Footer ── */
+    footer {
+      margin-top: auto;
+      padding: 20px 36px;
+      border-top: 1px solid var(--border);
+      font-size: 0.65rem;
+      color: #333;
+      letter-spacing: 0.06em;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Banner Viewer</h1>
+  <span>HTML zip inspector</span>
+</header>
+
+<div id="drop-area">
+  <div id="drop-icon">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="17 8 12 3 7 8"/>
+      <line x1="12" y1="3" x2="12" y2="15"/>
+    </svg>
+  </div>
+  <div id="drop-label">
+    <strong>Drop a ZIP file here</strong><br/>
+    or click to browse
+  </div>
+  <button id="drop-btn">Browse file</button>
+  <input type="file" id="file-input" accept=".zip" />
+</div>
+
+<div id="error-msg"></div>
+
+<div id="stats-bar">
+  <span>Found <b id="count-banners">0</b> banners</span>
+  <span>in <b id="count-folders">0</b> folders</span>
+  <button id="reset-btn">↩ Load another ZIP</button>
+</div>
+
+<div id="filter-bar">
+  <label>filter:</label>
+</div>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <span>Extracting banners…</span>
+</div>
+
+<div id="gallery"></div>
+
+<footer>Banner Viewer · drop any HTML zip · no data leaves your browser</footer>
+
+<!-- JSZip from CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(function () {
+  const dropArea   = document.getElementById('drop-area');
+  const fileInput  = document.getElementById('file-input');
+  const dropBtn    = document.getElementById('drop-btn');
+  const gallery    = document.getElementById('gallery');
+  const loading    = document.getElementById('loading');
+  const statsBar   = document.getElementById('stats-bar');
+  const filterBar  = document.getElementById('filter-bar');
+  const errorMsg   = document.getElementById('error-msg');
+  const countBanners = document.getElementById('count-banners');
+  const countFolders = document.getElementById('count-folders');
+  const resetBtn   = document.getElementById('reset-btn');
+
+  let allBanners = [];   // { path, folder, name, htmlContent, assets, blobUrl }
+  let activeFilter = null;
+
+  /* ── Drag & Drop events ── */
+  ['dragenter', 'dragover'].forEach(e => dropArea.addEventListener(e, ev => {
+    ev.preventDefault(); dropArea.classList.add('dragover');
+  }));
+  ['dragleave', 'drop'].forEach(e => dropArea.addEventListener(e, () => {
+    dropArea.classList.remove('dragover');
+  }));
+  dropArea.addEventListener('drop', ev => {
+    ev.preventDefault();
+    const file = ev.dataTransfer.files[0];
+    if (file) processZip(file);
+  });
+  dropArea.addEventListener('click', () => fileInput.click());
+  dropBtn.addEventListener('click', e => { e.stopPropagation(); fileInput.click(); });
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) processZip(fileInput.files[0]);
+    fileInput.value = '';
+  });
+  resetBtn.addEventListener('click', resetAll);
+
+  /* ── Reset ── */
+  function resetAll() {
+    // revoke old object URLs
+    allBanners.forEach(b => { if (b.blobUrl) URL.revokeObjectURL(b.blobUrl); });
+    allBanners = [];
+    gallery.innerHTML = '';
+    filterBar.innerHTML = '<label>filter:</label>';
+    filterBar.style.display = 'none';
+    statsBar.style.display = 'none';
+    dropArea.style.display = 'flex';
+    errorMsg.style.display = 'none';
+  }
+
+  function showError(msg) {
+    errorMsg.textContent = msg;
+    errorMsg.style.display = 'block';
+    loading.style.display = 'none';
+  }
+
+  /* ── Main processing ── */
+  async function processZip(file) {
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+      showError('Please drop a .zip file.'); return;
+    }
+    resetAll();
+    dropArea.style.display = 'none';
+    loading.style.display = 'flex';
+    errorMsg.style.display = 'none';
+
+    try {
+      const zip = await JSZip.loadAsync(file);
+      const entries = {};
+
+      // Group files by their "folder" (directory containing index.html)
+      zip.forEach((relativePath, zipEntry) => {
+        entries[relativePath] = zipEntry;
+      });
+
+      // Find all HTML files
+      const htmlFiles = Object.keys(entries).filter(p =>
+        !entries[p].dir && p.toLowerCase().endsWith('.html')
+      );
+
+      if (htmlFiles.length === 0) {
+        showError('No HTML files found inside the ZIP.'); return;
+      }
+
+      // Build banners
+      const banners = [];
+      for (const htmlPath of htmlFiles) {
+        const folder = htmlPath.includes('/') ? htmlPath.split('/').slice(0, -1).join('/') : '';
+        const name   = htmlPath.split('/').pop();
+
+        const htmlContent = await entries[htmlPath].async('text');
+
+        // Collect sibling assets (same directory)
+        const prefix = folder ? folder + '/' : '';
+        const assetMap = {}; // relative filename → blob URL
+        for (const p of Object.keys(entries)) {
+          if (entries[p].dir) continue;
+          if (p === htmlPath) continue;
+          if (folder && !p.startsWith(prefix)) continue;
+          if (!folder && p.includes('/')) continue;
+
+          const assetName = p.slice(prefix.length);
+          const data = await entries[p].async('arraybuffer');
+          const mime = guessMime(assetName);
+          const blob = new Blob([data], { type: mime });
+          assetMap[assetName] = URL.createObjectURL(blob);
+        }
+
+        banners.push({ path: htmlPath, folder: folder || '(root)', name, htmlContent, assets: assetMap });
+      }
+
+      allBanners = banners;
+      loading.style.display = 'none';
+      statsBar.style.display = 'flex';
+      countBanners.textContent = banners.length;
+
+      const folders = [...new Set(banners.map(b => b.folder))];
+      countFolders.textContent = folders.length;
+
+      // Filter chips
+      if (folders.length > 1) {
+        filterBar.style.display = 'flex';
+        const allChip = makeChip('All', null);
+        allChip.classList.add('active');
+        filterBar.appendChild(allChip);
+        folders.forEach(f => filterBar.appendChild(makeChip(f.split('/').pop() || f, f)));
+      }
+
+      renderGallery(banners);
+    } catch (err) {
+      showError('Failed to read ZIP: ' + err.message);
+    }
+  }
+
+  function makeChip(label, folder) {
+    const btn = document.createElement('button');
+    btn.className = 'filter-chip';
+    btn.textContent = label;
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      activeFilter = folder;
+      renderGallery(folder === null ? allBanners : allBanners.filter(b => b.folder === folder));
+    });
+    return btn;
+  }
+
+  function renderGallery(banners) {
+    gallery.innerHTML = '';
+    banners.forEach((banner, i) => {
+      const card = buildCard(banner, i);
+      gallery.appendChild(card);
+    });
+  }
+
+  function buildCard(banner, idx) {
+    const card = document.createElement('div');
+    card.className = 'banner-card';
+    card.style.animationDelay = (idx * 40) + 'ms';
+
+    // Rewrite HTML to use blob URLs for assets
+    let html = rewriteAssets(banner.htmlContent, banner.assets);
+
+    // Detect banner size from HTML (meta or body/div style width/height)
+    const size = detectSize(banner.htmlContent);
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const blobUrl = URL.createObjectURL(blob);
+    banner.blobUrl = blobUrl;
+
+    const frameW = size ? size.w : null;
+    const frameH = size ? size.h : null;
+
+    // Build card
+    card.innerHTML = `
+      <div class="card-header">
+        <div class="card-dot"></div>
+        <div class="card-title">${escHtml(banner.name)}</div>
+        ${size ? `<span class="card-size-tag">${size.w}×${size.h}</span>` : ''}
+      </div>
+      <div class="card-frame-wrap" id="wrap-${idx}"></div>
+      <div class="card-footer">
+        <span class="card-path">${escHtml(banner.path)}</span>
+        <a class="open-btn" href="${blobUrl}" target="_blank">↗ open</a>
+      </div>
+    `;
+
+    const wrap = card.querySelector(`#wrap-${idx}`);
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+    iframe.setAttribute('loading', 'lazy');
+    iframe.setAttribute('scrolling', 'no');
+
+    if (frameW && frameH) {
+      // Scale iframe to fit card width (max 400px)
+      iframe.style.width  = frameW + 'px';
+      iframe.style.height = frameH + 'px';
+      wrap.style.height   = '0'; // will be set after scale calc
+      iframe.src = blobUrl;
+
+      // Use ResizeObserver to scale on render
+      const ro = new ResizeObserver(() => {
+        const cardW = wrap.offsetWidth;
+        if (cardW === 0) return;
+        const scale = cardW / frameW;
+        iframe.style.transform = `scale(${scale})`;
+        iframe.style.transformOrigin = 'top left';
+        wrap.style.height = (frameH * scale) + 'px';
+      });
+      ro.observe(wrap);
+    } else {
+      iframe.style.width  = '100%';
+      iframe.style.height = '300px';
+      iframe.src = blobUrl;
+    }
+
+    wrap.appendChild(iframe);
+    return card;
+  }
+
+  /* ── Asset URL rewriting ── */
+  function rewriteAssets(html, assetMap) {
+    // Replace src/href references to local files
+    return html.replace(/(src|href|url)\s*=\s*["']([^"'#?]+)["']/gi, (match, attr, val) => {
+      const file = val.split('/').pop();
+      if (assetMap[val])  return `${attr}="${assetMap[val]}"`;
+      if (assetMap[file]) return `${attr}="${assetMap[file]}"`;
+      return match;
+    }).replace(/url\(([^)'"]+)\)/gi, (match, val) => {
+      const v = val.trim();
+      const file = v.split('/').pop();
+      if (assetMap[v])    return `url(${assetMap[v]})`;
+      if (assetMap[file]) return `url(${assetMap[file]})`;
+      return match;
+    });
+  }
+
+  /* ── Size detection ── */
+  function detectSize(html) {
+    // Try <meta name="ad.size" content="width=300,height=250">
+    let m = html.match(/name=["']ad\.size["'][^>]*content=["']width=(\d+),height=(\d+)["']/i)
+          || html.match(/content=["']width=(\d+),height=(\d+)["'][^>]*name=["']ad\.size["']/i);
+    if (m) return { w: +m[1], h: +m[2] };
+
+    // Try body or first div style with width+height
+    m = html.match(/(?:body|div)[^>]*style=["'][^"']*width\s*:\s*(\d+)px[^"']*height\s*:\s*(\d+)px/i)
+      || html.match(/(?:body|div)[^>]*style=["'][^"']*height\s*:\s*(\d+)px[^"']*width\s*:\s*(\d+)px/i);
+    if (m) {
+      // width then height, or height then width
+      const a = +m[1], b = +m[2];
+      return html.match(/width\s*:[^;]*height/i) ? { w: a, h: b } : { w: b, h: a };
+    }
+
+    // Try canvas width/height attr
+    m = html.match(/<canvas[^>]*width=["']?(\d+)["']?[^>]*height=["']?(\d+)["']?/i);
+    if (m) return { w: +m[1], h: +m[2] };
+
+    return null;
+  }
+
+  function guessMime(filename) {
+    const ext = filename.split('.').pop().toLowerCase();
+    return {
+      png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+      gif: 'image/gif', svg: 'image/svg+xml', webp: 'image/webp',
+      js: 'application/javascript', css: 'text/css',
+      json: 'application/json', woff: 'font/woff', woff2: 'font/woff2',
+      ttf: 'font/ttf', mp4: 'video/mp4', webm: 'video/webm',
+    }[ext] || 'application/octet-stream';
+  }
+
+  function escHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+})();
+</script>
+</body>
+</html>
