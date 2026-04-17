@@ -1,250 +1,154 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HTML Banner Viewer</title>
-    <!-- Load thư viện JSZip từ CDN -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <style>
-        :root {
-            --primary: #4F46E5;
-            --bg: #F3F4F6;
-            --text: #1F2937;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: var(--bg);
-            color: var(--text);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-            box-sizing: border-box;
-        }
-        
-        /* Drag & Drop Zone */
-        #drop-zone {
-            width: 100%;
-            max-width: 800px;
-            height: 300px;
-            border: 3px dashed #9CA3AF;
-            border-radius: 16px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            background-color: white;
-            transition: all 0.3s ease;
-            cursor: pointer;
-            margin-bottom: 20px;
-        }
-        #drop-zone.dragover {
-            border-color: var(--primary);
-            background-color: #EEF2FF;
-            transform: scale(1.02);
-        }
-        #drop-zone.minimized {
-            height: 100px; /* Thu nhỏ sau khi đã load file */
-        }
-        #drop-zone p {
-            font-size: 1.2rem;
-            color: #6B7280;
-            pointer-events: none;
-        }
-        #drop-zone svg {
-            width: 48px;
-            height: 48px;
-            color: #9CA3AF;
-            margin-bottom: 10px;
-            pointer-events: none;
-        }
-        #file-input {
-            display: none;
-        }
+  <meta charset="UTF-8">
+  <title>Banner Viewer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #fff;
+    }
 
-        /* Banner Gallery */
-        #gallery {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-            width: 100%;
-            justify-content: center;
-        }
-        .banner-card {
-            background: white;
-            padding: 10px;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            display: flex;
-            flex-direction: column;
-        }
-        .banner-header {
-            font-size: 0.85rem;
-            color: #4B5563;
-            margin-bottom: 8px;
-            word-break: break-all;
-            padding-bottom: 8px;
-            border-bottom: 1px solid #E5E7EB;
-        }
-        .iframe-wrapper {
-            /* Mặc định cho banner cỡ 300x250, có thể dùng chuột kéo góc để resize */
-            width: 300px; 
-            height: 250px;
-            resize: both;
-            overflow: hidden;
-            border: 1px solid #E5E7EB;
-            position: relative;
-        }
-        iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
-        }
-        #loading {
-            display: none;
-            font-weight: bold;
-            color: var(--primary);
-            margin-bottom: 20px;
-        }
-    </style>
+    #dropzone {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px dashed #555;
+      cursor: pointer;
+    }
+
+    #dropzone.hover {
+      border-color: #00ffcc;
+      background: rgba(0,255,200,0.05);
+    }
+
+    #dropzone span {
+      font-size: 20px;
+      opacity: 0.7;
+    }
+
+    #viewer {
+      display: none;
+      padding: 20px;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    iframe {
+      border: 1px solid #333;
+      background: white;
+    }
+  </style>
 </head>
 <body>
 
-    <div id="drop-zone">
-        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
-        <p>Kéo thả file ZIP chứa banners vào đây</p>
-        <p style="font-size: 0.9rem; margin-top: 5px;">hoặc click để chọn file</p>
-        <input type="file" id="file-input" accept=".zip">
-    </div>
+<div id="dropzone">
+  <span>Drop ZIP file here</span>
+</div>
 
-    <div id="loading">Đang giải nén và xử lý banners...</div>
-    
-    <div id="gallery"></div>
+<div id="viewer"></div>
 
-    <script>
-        const dropZone = document.getElementById('drop-zone');
-        const fileInput = document.getElementById('file-input');
-        const gallery = document.getElementById('gallery');
-        const loading = document.getElementById('loading');
+<script>
+const dropzone = document.getElementById('dropzone');
+const viewer = document.getElementById('viewer');
 
-        // Xử lý sự kiện Drag & Drop
-        dropZone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            dropZone.classList.add('dragover');
-        });
+function preventDefaults(e) {
+  e.preventDefault();
+  e.stopPropagation();
+}
 
-        dropZone.addEventListener('dragleave', () => {
-            dropZone.classList.remove('dragover');
-        });
+['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+  dropzone.addEventListener(eventName, preventDefaults, false);
+});
 
-        dropZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropZone.classList.remove('dragover');
-            const files = e.dataTransfer.files;
-            if (files.length > 0 && files[0].name.endsWith('.zip')) {
-                processZip(files[0]);
-            } else {
-                alert("Vui lòng thả file ZIP!");
-            }
-        });
+['dragenter', 'dragover'].forEach(() => {
+  dropzone.classList.add('hover');
+});
 
-        // Xử lý sự kiện Click để chọn file
-        dropZone.addEventListener('click', () => fileInput.click());
-        fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                processZip(e.target.files[0]);
-            }
-        });
+['dragleave', 'drop'].forEach(() => {
+  dropzone.classList.remove('hover');
+});
 
-        async function processZip(file) {
-            loading.style.display = 'block';
-            gallery.innerHTML = ''; // Xóa gallery cũ
-            dropZone.classList.add('minimized'); // Thu nhỏ drop zone
-            dropZone.querySelector('p').innerText = "Kéo thả file ZIP khác để xem mới";
+dropzone.addEventListener('drop', async (e) => {
+  const file = e.dataTransfer.files[0];
+  if (!file || !file.name.endsWith('.zip')) return;
 
-            try {
-                const zip = new JSZip();
-                const contents = await zip.loadAsync(file);
-                
-                const fileBlobs = {};
-                const htmlFiles =[];
+  const zip = await JSZip.loadAsync(file);
+  viewer.innerHTML = '';
 
-                // Bước 1: Đọc tất cả các file không phải thư mục và không phải file rác (MAC)
-                for (const filename of Object.keys(contents.files)) {
-                    if (filename.includes('__MACOSX') || filename.includes('.DS_Store')) continue;
-                    
-                    const fileObj = contents.files[filename];
-                    if (!fileObj.dir) {
-                        if (filename.endsWith('.html')) {
-                            htmlFiles.push(filename);
-                        } else {
-                            // Tạo Blob URL cho ảnh, css, js để iframe có thể load được
-                            const blob = await fileObj.async("blob");
-                            fileBlobs[filename] = URL.createObjectURL(blob);
-                        }
-                    }
-                }
+  const fileMap = {};
 
-                // Bước 2: Xử lý các file HTML
-                for (const filename of htmlFiles) {
-                    let htmlText = await contents.files[filename].async("text");
-                    const basePath = filename.substring(0, filename.lastIndexOf('/') + 1);
+  // Create Blob URLs for ALL files
+  await Promise.all(Object.keys(zip.files).map(async (path) => {
+    const entry = zip.files[path];
+    if (!entry.dir) {
+      const blob = await entry.async('blob');
+      fileMap[path] = URL.createObjectURL(blob);
+    }
+  }));
 
-                    // Thay thế các đường dẫn tương đối trong HTML bằng Blob URLs tương ứng
-                    for (const assetPath in fileBlobs) {
-                        // Tính đường dẫn tương đối của asset so với file html hiện tại
-                        let relativeAssetPath = assetPath;
-                        if (assetPath.startsWith(basePath)) {
-                            relativeAssetPath = assetPath.substring(basePath.length);
-                        }
+  const htmlFiles = Object.keys(zip.files).filter(p => p.endsWith('.html'));
 
-                        // Replace đường dẫn trong nháy đơn hoặc nháy kép
-                        const regexSingle = new RegExp(`'${relativeAssetPath}'`, 'g');
-                        const regexDouble = new RegExp(`"${relativeAssetPath}"`, 'g');
-                        
-                        htmlText = htmlText.replace(regexSingle, `'${fileBlobs[assetPath]}'`);
-                        htmlText = htmlText.replace(regexDouble, `"${fileBlobs[assetPath]}"`);
-                    }
+  for (const path of htmlFiles) {
+    const entry = zip.files[path];
+    let content = await entry.async('string');
 
-                    renderBanner(htmlText, filename);
-                }
+    // Fix relative paths (robust)
+    const basePath = path.includes('/') ? path.substring(0, path.lastIndexOf('/') + 1) : '';
 
-                if (htmlFiles.length === 0) {
-                    alert("Không tìm thấy file .html nào trong file ZIP!");
-                }
+    function resolvePath(base, relative) {
+      if (relative.startsWith('/')) return relative.slice(1);
+      const stack = (base + relative).split('/');
+      const result = [];
+      for (const part of stack) {
+        if (part === '' || part === '.') continue;
+        if (part === '..') result.pop();
+        else result.push(part);
+      }
+      return result.join('/');
+    }
 
-            } catch (error) {
-                console.error(error);
-                alert("Có lỗi xảy ra khi đọc file ZIP.");
-            } finally {
-                loading.style.display = 'none';
-                fileInput.value = ""; // Reset input
-            }
-        }
+    content = content.replace(/(src|href)=["']([^"']+)["']/g, (match, attr, url) => {
+      if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('blob:')) return match;
 
-        function renderBanner(htmlContent, filePath) {
-            const card = document.createElement('div');
-            card.className = 'banner-card';
+      const resolved = resolvePath(basePath, url);
 
-            const header = document.createElement('div');
-            header.className = 'banner-header';
-            header.innerText = filePath; // Hiển thị đường dẫn file (ví dụ: banner_300x250/index.html)
+      // try exact match
+      if (fileMap[resolved]) {
+        return `${attr}="${fileMap[resolved]}"`;
+      }
 
-            const wrapper = document.createElement('div');
-            wrapper.className = 'iframe-wrapper';
+      // try without leading folder (common zip root folder issue)
+      const alt = Object.keys(fileMap).find(k => k.endsWith(resolved));
+      if (alt && fileMap[alt]) {
+        return `${attr}="${fileMap[alt]}"`;
+      }
 
-            const iframe = document.createElement('iframe');
-            // Dùng srcdoc để chèn trực tiếp mã HTML vào iframe
-            iframe.srcdoc = htmlContent;
+      return match;
+    });
 
-            wrapper.appendChild(iframe);
-            card.appendChild(header);
-            card.appendChild(wrapper);
-            gallery.appendChild(card);
-        }
-    </script>
+    const iframe = document.createElement('iframe');
+    iframe.width = 320;
+    iframe.height = 250;
+
+    const blob = new Blob([content], { type: 'text/html' });
+    iframe.src = URL.createObjectURL(blob);
+
+    viewer.appendChild(iframe);
+  }
+
+  dropzone.style.display = 'none';
+  viewer.style.display = 'flex';
+});
+</script>
+
 </body>
 </html>
