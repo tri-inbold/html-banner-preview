@@ -18,130 +18,93 @@
             transition: background-color 0.2s;
         }
 
-        body.dragover {
-            background-color: #f8fafc;
-        }
+        body.dragover { background-color: #f8fafc; }
         body.dragover::after {
-            content: '';
-            position: fixed;
+            content: ''; position: fixed;
             top: 10px; left: 10px; right: 10px; bottom: 10px;
-            border: 3px dashed #000;
-            pointer-events: none;
-            z-index: 9999;
+            border: 3px dashed #000; pointer-events: none; z-index: 9999;
         }
 
         #instruction {
-            position: fixed;
-            top: 50%;
-            left: 50%;
+            position: fixed; top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            color: #666;
-            font-size: 1.2rem;
-            text-align: center;
-            pointer-events: none;
-            z-index: 0;
+            color: #666; font-size: 1.2rem; text-align: center;
+            pointer-events: none; z-index: 0; line-height: 1.6;
         }
 
-        #file-input { display: none; }
+        .link-btn {
+            font-size: 0.95rem; cursor: pointer; pointer-events: auto;
+            text-decoration: underline; color: #4F46E5; font-weight: 500;
+        }
+
+        #file-input, #folder-input { display: none; }
 
         #gallery {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 15px; 
-            width: 100%;
-            justify-content: center;
-            align-items: flex-start;
-            position: relative;
-            z-index: 1;
+            display: flex; flex-wrap: wrap; gap: 15px; 
+            width: 100%; justify-content: center; align-items: flex-start;
+            position: relative; z-index: 1;
         }
 
-        .banner-item {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
+        .banner-item { display: flex; flex-direction: column; align-items: center; }
 
         .iframe-wrapper {
-            border: 1px solid #000;
-            background-color: #fff;
-            position: relative;
-            overflow: hidden;
+            border: 1px solid #000; background-color: #fff;
+            position: relative; overflow: hidden;
         }
 
-        iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
-            display: block;
-        }
+        iframe { width: 100%; height: 100%; border: none; display: block; }
 
         .banner-controls {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 6px;
+            display: flex; justify-content: space-between; align-items: center; margin-top: 6px;
         }
 
         .banner-name {
-            font-size: 11px;
-            color: #000;
-            font-family: monospace;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            flex-grow: 1;
-            margin-right: 10px;
-            text-align: left;
+            font-size: 11px; color: #000; font-family: monospace;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            flex-grow: 1; margin-right: 10px; text-align: left;
         }
 
-        .btn-group {
-            display: flex;
-            gap: 4px;
-            flex-shrink: 0;
-        }
+        .btn-group { display: flex; gap: 4px; flex-shrink: 0; }
 
         .btn-icon {
-            background: transparent;
-            border: none;
-            cursor: pointer;
-            padding: 2px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #000;
-            opacity: 0.6;
-            transition: opacity 0.2s;
+            background: transparent; border: none; cursor: pointer; padding: 2px;
+            display: flex; align-items: center; justify-content: center;
+            color: #000; opacity: 0.6; transition: opacity 0.2s;
         }
 
-        .btn-icon:hover {
-            opacity: 1;
-        }
+        .btn-icon:hover { opacity: 1; }
     </style>
 </head>
 <body>
 
     <div id="instruction">
-        Kéo thả file ZIP hoặc file HTML vào bất kỳ đâu trên trang
+        Kéo thả File hoặc <b>THƯ MỤC</b> vào bất kỳ đâu trên trang
         <br>
-        <span style="font-size: 0.9rem; cursor: pointer; pointer-events: auto; text-decoration: underline;" onclick="document.getElementById('file-input').click()">
-            hoặc click để chọn file
-        </span>
+        <span class="link-btn" onclick="document.getElementById('file-input').click()">chọn file</span>
+        &nbsp;&nbsp;hoặc&nbsp;&nbsp;
+        <span class="link-btn" onclick="document.getElementById('folder-input').click()">chọn thư mục</span>
     </div>
     
-    <!-- Cập nhật thẻ input hỗ trợ thêm .html -->
     <input type="file" id="file-input" accept=".zip, .html" multiple>
+    <!-- THUỘC TÍNH webkitdirectory CHO PHÉP CHỌN CẢ 1 FOLDER -->
+    <input type="file" id="folder-input" webkitdirectory directory multiple>
+    
     <div id="gallery"></div>
 
     <script>
         const body = document.body;
         const fileInput = document.getElementById('file-input');
+        const folderInput = document.getElementById('folder-input');
         const gallery = document.getElementById('gallery');
         const instruction = document.getElementById('instruction');
 
+        // Bắt sự kiện Click nút
+        fileInput.addEventListener('change', function() { handleFiles(Array.from(this.files)); this.value = ''; });
+        folderInput.addEventListener('change', function() { handleFiles(Array.from(this.files)); this.value = ''; });
+
+        // Bắt sự kiện Drag & Drop
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            body.addEventListener(eventName, e => {
-                e.preventDefault(); e.stopPropagation();
-            }, false);
+            body.addEventListener(eventName, e => { e.preventDefault(); e.stopPropagation(); }, false);
         });
 
         body.addEventListener('dragenter', () => body.classList.add('dragover'));
@@ -150,38 +113,89 @@
             if (e.target === body) body.classList.remove('dragover');
         });
 
-        body.addEventListener('drop', (e) => {
+        body.addEventListener('drop', async (e) => {
             body.classList.remove('dragover');
-            handleFiles(e.dataTransfer.files);
+            
+            const items = e.dataTransfer.items;
+            let allFiles =[];
+
+            if (items) {
+                // Duyệt qua các items được thả vào (có thể là file hoặc folder)
+                const promises =[];
+                for (let i = 0; i < items.length; i++) {
+                    const item = items[i];
+                    if (item.kind === 'file') {
+                        const entry = item.webkitGetAsEntry();
+                        if (entry) promises.push(processEntry(entry));
+                    }
+                }
+                // Đợi đọc xong toàn bộ cây thư mục đệ quy
+                const results = await Promise.all(promises);
+                allFiles = results.flat(); // Gộp mảng đa chiều thành 1 chiều
+            } else {
+                allFiles = Array.from(e.dataTransfer.files);
+            }
+
+            handleFiles(allFiles);
         });
 
-        fileInput.addEventListener('change', function() {
-            handleFiles(this.files); this.value = ''; 
-        });
+        // HÀM ĐỆ QUY ĐỂ ĐỌC SÂU VÀO TRONG THƯ MỤC
+        async function processEntry(entry) {
+            if (entry.isFile) {
+                return new Promise(resolve => entry.file(resolve));
+            } else if (entry.isDirectory) {
+                const dirReader = entry.createReader();
+                const entries = await readAllDirectoryEntries(dirReader);
+                const promises = entries.map(e => processEntry(e));
+                const results = await Promise.all(promises);
+                return results.flat();
+            }
+            return[];
+        }
 
+        // Vòng lặp đọc thư mục (Vì API giới hạn mỗi lần đọc chỉ trả về 100 files, nên phải gọi đệ quy)
+        async function readAllDirectoryEntries(dirReader) {
+            let entries =[];
+            let readEntries = async () => {
+                const results = await new Promise((resolve, reject) => dirReader.readEntries(resolve, reject));
+                if (results.length) {
+                    entries = entries.concat(Array.from(results));
+                    await readEntries(); // Đọc tiếp cho đến khi rỗng
+                }
+            };
+            await readEntries();
+            return entries;
+        }
+
+        // HÀM LỌC FILE SAU KHI ĐÃ LẤY ĐƯỢC TỪ MÁY (KỂ CẢ TRONG FOLDER)
         function handleFiles(files) {
             let validFileFound = false;
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
-                if (file.name.toLowerCase().endsWith('.zip')) {
+                const fileName = file.name.toLowerCase();
+                const path = file.webkitRelativePath || ""; // Đường dẫn nếu chọn bằng folder input
+                
+                // Bỏ qua các file rác của Mac nếu vướng vào
+                if (fileName.includes('.ds_store') || path.includes('__MACOSX')) continue;
+
+                if (fileName.endsWith('.zip')) {
                     validFileFound = true;
                     processZip(file);
-                } else if (file.name.toLowerCase().endsWith('.html')) {
+                } else if (fileName.endsWith('.html')) {
                     validFileFound = true;
-                    processHtmlFile(file); // Xử lý file html rời
+                    processHtmlFile(file);
                 }
             }
             if (validFileFound) instruction.style.display = 'none';
         }
 
-        // --- XỬ LÝ FILE HTML ĐƠN LẺ ---
         async function processHtmlFile(file) {
             try {
                 const htmlText = await file.text();
                 const initSize = getBannerSize(htmlText);
                 renderBanner(htmlText, file.name, initSize);
             } catch (error) {
-                alert("Lỗi khi đọc file HTML: " + file.name);
+                console.error("Lỗi khi đọc file HTML: " + file.name);
             }
         }
 
@@ -254,14 +268,12 @@
                     }
 
                     const initSize = getBannerSize(htmlText);
-                    
-                    // Lấy Tên File ZIP làm tên Frame. (Nếu có nhiều file html trong 1 zip thì nối thêm tên để phân biệt)
                     const displayName = htmlFiles.length === 1 ? file.name : `${file.name} - ${filename.split('/').pop()}`;
 
                     renderBanner(htmlText, displayName, initSize);
                 }
             } catch (error) {
-                alert("Lỗi khi đọc file: " + file.name);
+                console.error("Lỗi khi đọc file ZIP: " + file.name);
             }
         }
 
@@ -315,7 +327,6 @@
 
             loadIframe(); 
 
-            // -- Giao Diện Điều Khiển --
             const title = document.createElement('div');
             title.className = 'banner-name';
             title.title = displayName; 
@@ -324,7 +335,6 @@
             const btnGroup = document.createElement('div');
             btnGroup.className = 'btn-group';
 
-            // 1. Nút Capture
             const btnCapture = document.createElement('button');
             btnCapture.className = 'btn-icon';
             btnCapture.title = 'Chụp ảnh Frame';
@@ -362,39 +372,27 @@
                     }
 
                     const renderedCanvas = await html2canvas(innerDoc.body, {
-                        useCORS: true,
-                        allowTaint: true,
-                        backgroundColor: '#ffffff',
-                        width: bWidth,
-                        height: bHeight,
-                        scale: 1, 
-                        x: 0,
-                        y: 0
+                        useCORS: true, allowTaint: true, backgroundColor: '#ffffff',
+                        width: bWidth, height: bHeight, scale: 1, x: 0, y: 0
                     });
                     
                     downloadImage(renderedCanvas.toDataURL('image/png'));
 
-                } catch (err) {
-                    alert("Lỗi chụp ảnh: " + err.message);
-                }
+                } catch (err) { alert("Lỗi chụp ảnh: " + err.message); }
             };
 
             function downloadImage(dataUrl) {
                 const link = document.createElement('a');
-                // Tên file ảnh tải xuống sẽ trùng với tên file ZIP hoặc HTML của nó
                 link.download = `capture_${displayName.replace('.zip', '').replace('.html', '')}_${Date.now()}.png`;
-                link.href = dataUrl;
-                link.click();
+                link.href = dataUrl; link.click();
             }
 
-            // 2. Nút Refresh 
             const btnRefresh = document.createElement('button');
             btnRefresh.className = 'btn-icon';
             btnRefresh.title = 'Chạy lại Animation';
             btnRefresh.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path></svg>';
             btnRefresh.onclick = () => { loadIframe(); };
 
-            // 3. Nút Đóng
             const btnClose = document.createElement('button');
             btnClose.className = 'btn-icon';
             btnClose.title = 'Đóng';
