@@ -4,10 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HTML Banner Viewer</title>
-    <!-- Load thư viện JSZip từ CDN -->
+    <!-- Thư viện giải nén ZIP -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- Thư viện chụp màn hình -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
     <style>
-        /* Reset và thiết lập toàn bộ trang làm vùng thả file */
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             margin: 0;
@@ -18,7 +20,6 @@
             transition: background-color 0.2s;
         }
 
-        /* Hiệu ứng viền đứt nét viền quanh trang khi đang kéo file vào */
         body.dragover {
             background-color: #f8fafc;
         }
@@ -31,11 +32,9 @@
             z-index: 9999;
         }
 
-        /* Chữ hướng dẫn lúc đầu */
         #instruction {
             position: fixed;
-            top: 50%;
-            left: 50%;
+            top: 50%; left: 50%;
             transform: translate(-50%, -50%);
             color: #666;
             font-size: 1.2rem;
@@ -44,15 +43,12 @@
             z-index: 0;
         }
 
-        #file-input {
-            display: none;
-        }
+        #file-input { display: none; }
 
-        /* Container chứa các banners */
         #gallery {
             display: flex;
             flex-wrap: wrap;
-            gap: 40px;
+            gap: 20px; /* Đã giảm 1 nửa khoảng cách (từ 40px xuống 20px) */
             width: 100%;
             justify-content: center;
             align-items: flex-start;
@@ -60,18 +56,16 @@
             z-index: 1;
         }
 
-        /* Tối giản thiết kế banner */
         .banner-item {
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 8px; /* Khoảng cách giữa box HTML và tên */
         }
 
         .iframe-wrapper {
-            border: 1px solid #000; /* Đúng 1 viền outline đen theo yêu cầu */
+            border: 1px solid #000;
             background-color: #fff;
-            /* width và height sẽ được inject tự động qua JS */
+            position: relative;
         }
 
         iframe {
@@ -81,27 +75,55 @@
             display: block;
         }
 
+        /* Thanh control chứa [X] [Tên] [Refresh] */
+        .controls-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 5px;
+            gap: 6px;
+        }
+
         .banner-name {
-            font-size: 13px;
+            font-size: 10.4px; /* Nhỏ lại 20% so với 13px cũ */
             color: #000;
-            word-break: break-all;
-            max-width: 100%;
-            text-align: center;
             font-family: monospace;
+            text-align: left; /* Canh trái */
+            flex-grow: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .btn-icon {
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: bold;
+            background: none;
+            border: 1px solid #000;
+            color: #000;
+            padding: 2px 6px;
+            border-radius: 3px;
+            user-select: none;
+            transition: all 0.2s;
+        }
+        .btn-icon:hover {
+            background: #000;
+            color: #fff;
         }
     </style>
 </head>
 <body>
 
     <div id="instruction">
-        Kéo thả (các) file ZIP vào bất kỳ đâu trên trang
+        Kéo thả file ZIP hoặc file HTML vào bất kỳ đâu trên trang
         <br>
         <span style="font-size: 0.9rem; cursor: pointer; pointer-events: auto; text-decoration: underline;" onclick="document.getElementById('file-input').click()">
             hoặc click để chọn file
         </span>
     </div>
     
-    <input type="file" id="file-input" accept=".zip" multiple>
+    <input type="file" id="file-input" accept=".zip, .html" multiple>
     <div id="gallery"></div>
 
     <script>
@@ -110,15 +132,12 @@
         const gallery = document.getElementById('gallery');
         const instruction = document.getElementById('instruction');
 
-        // Lắng nghe sự kiện Drag & Drop trên TOÀN BỘ trang (body)
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            body.addEventListener(eventName, preventDefaults, false);
+            body.addEventListener(eventName, e => {
+                e.preventDefault();
+                e.stopPropagation();
+            }, false);
         });
-
-        function preventDefaults(e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
 
         body.addEventListener('dragenter', () => body.classList.add('dragover'));
         body.addEventListener('dragover', () => body.classList.add('dragover'));
@@ -133,74 +152,35 @@
 
         fileInput.addEventListener('change', function() {
             handleFiles(this.files);
-            this.value = ''; // Reset để có thể chọn lại đúng file đó
+            this.value = ''; 
         });
 
         function handleFiles(files) {
-            let zipFound = false;
-            // Cho phép lặp qua nhiều file zip được chọn/thả cùng 1 lúc
+            let validFileFound = false;
             for (let i = 0; i < files.length; i++) {
-                if (files[i].name.endsWith('.zip')) {
-                    zipFound = true;
-                    processZip(files[i]);
+                const file = files[i];
+                if (file.name.toLowerCase().endsWith('.zip')) {
+                    validFileFound = true;
+                    processZip(file);
+                } else if (file.name.toLowerCase().endsWith('.html')) {
+                    // Hỗ trợ thả trực tiếp file HTML
+                    validFileFound = true;
+                    processHtmlFile(file);
                 }
             }
-            if (zipFound) {
-                instruction.style.display = 'none'; // Ẩn hướng dẫn khi bắt đầu có file
-            }
+            if (validFileFound) instruction.style.display = 'none';
         }
 
-        function getMimeType(filename) {
-            const ext = filename.split('.').pop().toLowerCase();
-            switch (ext) {
-                case 'svg': return 'image/svg+xml';
-                case 'png': return 'image/png';
-                case 'jpg': 
-                case 'jpeg': return 'image/jpeg';
-                case 'gif': return 'image/gif';
-                case 'webp': return 'image/webp';
-                case 'css': return 'text/css';
-                case 'js': return 'text/javascript';
-                case 'json': return 'application/json';
-                default: return 'application/octet-stream';
+        // Đọc trực tiếp file HTML thả vào
+        async function processHtmlFile(file) {
+            try {
+                let htmlText = await file.text();
+                const size = getBannerSize(htmlText);
+                htmlText = injectFreezeScript(htmlText); // Bơm script đóng băng + chụp ảnh
+                renderBanner(htmlText, file.name, size);
+            } catch(e) {
+                console.error(e);
             }
-        }
-
-        // THUẬT TOÁN ĐỌC KÍCH THƯỚC BANNER TỪ BÊN TRONG MÃ NGUỒN HTML
-        function getBannerSize(html) {
-            let width = 300;  // Kích thước mặc định nếu không tìm thấy
-            let height = 250;
-            
-            // 1. Tìm theo chuẩn IAB: <meta name="ad.size" content="width=300,height=250">
-            const metaTagRegex = /<meta\s+[^>]*name=["']ad\.size["'][^>]*>/i;
-            const metaMatch = html.match(metaTagRegex);
-            
-            if (metaMatch) {
-                const contentMatch = metaMatch[0].match(/content=["']([^"']+)["']/i);
-                if (contentMatch) {
-                    const contentParams = contentMatch[1];
-                    const wMatch = contentParams.match(/width\s*=\s*(\d+)/i);
-                    const hMatch = contentParams.match(/height\s*=\s*(\d+)/i);
-                    if (wMatch) width = parseInt(wMatch[1], 10);
-                    if (hMatch) height = parseInt(hMatch[1], 10);
-                }
-            } else {
-                // 2. Tìm theo chuẩn Adobe Animate HTML5 Canvas: <canvas width="300" height="250">
-                const canvasMatch = html.match(/<canvas[^>]*width=["'](\d+)["'][^>]*height=["'](\d+)["'][^>]*>/i);
-                if (canvasMatch) {
-                    width = parseInt(canvasMatch[1], 10);
-                    height = parseInt(canvasMatch[2], 10);
-                } else {
-                    // 3. Fallback: Cố gắng quét CSS inline dạng width:300px; height:250px;
-                    const cssWidthMatch = html.match(/width\s*:\s*(\d+)px/i);
-                    const cssHeightMatch = html.match(/height\s*:\s*(\d+)px/i);
-                    if (cssWidthMatch && cssHeightMatch) {
-                        width = parseInt(cssWidthMatch[1], 10);
-                        height = parseInt(cssHeightMatch[1], 10);
-                    }
-                }
-            }
-            return { width, height };
         }
 
         async function processZip(file) {
@@ -219,7 +199,10 @@
                         if (filename.endsWith('.html')) {
                             htmlFiles.push(filename);
                         } else {
-                            const mimeType = getMimeType(filename);
+                            const ext = filename.split('.').pop().toLowerCase();
+                            const mimeMap = { svg:'image/svg+xml', png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg', gif:'image/gif', css:'text/css', js:'text/javascript' };
+                            const mimeType = mimeMap[ext] || 'application/octet-stream';
+                            
                             const uint8array = await fileObj.async("uint8array");
                             const blob = new Blob([uint8array], { type: mimeType });
                             fileBlobs[filename] = URL.createObjectURL(blob);
@@ -232,64 +215,169 @@
                     const basePath = filename.substring(0, filename.lastIndexOf('/') + 1);
 
                     for (const assetPath in fileBlobs) {
-                        let relativeAssetPath = assetPath;
-                        if (assetPath.startsWith(basePath)) {
-                            relativeAssetPath = assetPath.substring(basePath.length);
-                        }
-
+                        let relativePath = assetPath.startsWith(basePath) ? assetPath.substring(basePath.length) : assetPath;
                         const blobUrl = fileBlobs[assetPath];
-                        const url1 = relativeAssetPath;
-                        const url2 = "./" + relativeAssetPath;
-
-                        htmlText = htmlText.split(`"${url1}"`).join(`"${blobUrl}"`);
-                        htmlText = htmlText.split(`'${url1}'`).join(`'${blobUrl}'`);
-                        htmlText = htmlText.split(`"${url2}"`).join(`"${blobUrl}"`);
-                        htmlText = htmlText.split(`'${url2}'`).join(`'${blobUrl}'`);
                         
-                        htmlText = htmlText.split(`url(${url1})`).join(`url(${blobUrl})`);
-                        htmlText = htmlText.split(`url('${url1}')`).join(`url('${blobUrl}')`);
-                        htmlText = htmlText.split(`url("${url1}")`).join(`url("${blobUrl}")`);
+                        htmlText = htmlText.split(`"${relativePath}"`).join(`"${blobUrl}"`);
+                        htmlText = htmlText.split(`'${relativePath}'`).join(`'${blobUrl}'`);
+                        htmlText = htmlText.split(`"./${relativePath}"`).join(`"${blobUrl}"`);
+                        htmlText = htmlText.split(`'./${relativePath}'`).join(`'${blobUrl}'`);
                         
-                        htmlText = htmlText.split(`url(${url2})`).join(`url(${blobUrl})`);
-                        htmlText = htmlText.split(`url('${url2}')`).join(`url('${blobUrl}')`);
-                        htmlText = htmlText.split(`url("${url2}")`).join(`url("${blobUrl}")`);
+                        htmlText = htmlText.split(`url(${relativePath})`).join(`url(${blobUrl})`);
+                        htmlText = htmlText.split(`url('${relativePath}')`).join(`url('${blobUrl}')`);
+                        htmlText = htmlText.split(`url("${relativePath}")`).join(`url("${blobUrl}")`);
                     }
 
-                    // Tự động phân tích tìm chiều cao, chiều rộng và inject vào frame
                     const size = getBannerSize(htmlText);
-                    renderBanner(htmlText, filename, size);
+                    htmlText = injectFreezeScript(htmlText); // Bơm script
+                    
+                    // Nếu ZIP chỉ có 1 html, lấy tên ZIP. Nếu nhiều file, ghép tên Zip và tên file html.
+                    const displayName = htmlFiles.length === 1 ? file.name : `${file.name} - ${filename.split('/').pop()}`;
+                    renderBanner(htmlText, displayName, size);
                 }
-
             } catch (error) {
                 console.error(error);
                 alert("Lỗi khi đọc file: " + file.name);
             }
         }
 
-        function renderBanner(htmlContent, filePath, size) {
+        function getBannerSize(html) {
+            let width = 300, height = 250;
+            const metaMatch = html.match(/<meta\s+[^>]*name=["']ad\.size["'][^>]*>/i);
+            if (metaMatch) {
+                const contentMatch = metaMatch[0].match(/content=["']([^"']+)["']/i);
+                if (contentMatch) {
+                    const w = contentMatch[1].match(/width\s*=\s*(\d+)/i);
+                    const h = contentMatch[1].match(/height\s*=\s*(\d+)/i);
+                    if (w) width = parseInt(w[1], 10);
+                    if (h) height = parseInt(h[1], 10);
+                }
+            } else {
+                const canvasMatch = html.match(/<canvas[^>]*width=["'](\d+)["'][^>]*height=["'](\d+)["'][^>]*>/i);
+                if (canvasMatch) {
+                    width = parseInt(canvasMatch[1], 10);
+                    height = parseInt(canvasMatch[2], 10);
+                }
+            }
+            return { width, height };
+        }
+
+        // Bơm script vào HTML để bắt sự kiện Ctrl+Click và Dừng Animation
+        function injectFreezeScript(html) {
+            const script = `
+            <script>
+                // Lắng nghe Ctrl + Click để báo cho trình duyệt mẹ chụp ảnh
+                window.addEventListener('click', function(e) {
+                    if (e.ctrlKey) {
+                        e.preventDefault(); e.stopPropagation();
+                        window.parent.postMessage({ action: 'ctrl-click' }, '*');
+                    }
+                }, true);
+
+                // Hàm ép buộc toàn bộ animation dừng lại
+                window.freezeBanner = function() {
+                    // Dừng CSS Animation
+                    const style = document.createElement('style');
+                    style.innerHTML = '*, *::before, *::after { animation-play-state: paused !important; transition: none !important; }';
+                    document.head.appendChild(style);
+                    // Dừng GSAP
+                    if(window.gsap) window.gsap.globalTimeline.pause();
+                    if(window.TweenMax) window.TweenMax.pauseAll();
+                    // Dừng CreateJS (Adobe Animate)
+                    if(window.createjs && window.createjs.Ticker) window.createjs.Ticker.paused = true;
+                };
+            <\/script>`;
+            
+            if (html.toLowerCase().includes('<head>')) {
+                return html.replace(/<head>/i, '<head>' + script);
+            }
+            return script + html;
+        }
+
+        // Lắng nghe Message từ Banner gửi ra khi bấm Ctrl + Click
+        window.addEventListener('message', async (e) => {
+            if (e.data && e.data.action === 'ctrl-click') {
+                const iframes = document.querySelectorAll('iframe');
+                let targetIframe = null;
+
+                // 1. Dừng TẤT CẢ các banner đang chạy lại ngay khung cảnh đó
+                iframes.forEach(ifr => {
+                    if (ifr.contentWindow === e.source) targetIframe = ifr;
+                    try { ifr.contentWindow.freezeBanner(); } catch(err){}
+                });
+
+                // 2. Tiến hành chụp hình frame đó
+                if (targetIframe) {
+                    try {
+                        const wrapperToCapture = targetIframe.parentNode;
+                        const canvas = await html2canvas(wrapperToCapture, {
+                            useCORS: true, 
+                            allowTaint: true,
+                            backgroundColor: null
+                        });
+                        
+                        const link = document.createElement('a');
+                        link.download = `banner_screenshot_${Date.now()}.png`;
+                        link.href = canvas.toDataURL('image/png');
+                        link.click();
+                    } catch (err) {
+                        alert("Lỗi chụp ảnh: " + err.message);
+                    }
+                }
+            }
+        });
+
+        function renderBanner(htmlContent, displayName, size) {
             const item = document.createElement('div');
             item.className = 'banner-item';
 
             const wrapper = document.createElement('div');
             wrapper.className = 'iframe-wrapper';
-            // Cập nhật width/height chuẩn xác cho bao bì ngoài iframe
             wrapper.style.width = size.width + 'px';
             wrapper.style.height = size.height + 'px';
 
-            const iframe = document.createElement('iframe');
+            let iframe = document.createElement('iframe');
             iframe.srcdoc = htmlContent;
-            iframe.scrolling = "no"; // Tắt thanh cuộn để tránh mất thẩm mỹ
+            iframe.scrolling = "no";
+            wrapper.appendChild(iframe);
 
+            const controls = document.createElement('div');
+            controls.className = 'controls-row';
+            controls.style.width = size.width + 'px'; // Fix width thanh công cụ bằng đúng size banner
+
+            // Nút Tắt (X)
+            const btnClose = document.createElement('button');
+            btnClose.className = 'btn-icon';
+            btnClose.innerText = 'X';
+            btnClose.title = "Đóng banner này";
+            btnClose.onclick = () => item.remove();
+
+            // Tên Banner
             const title = document.createElement('div');
             title.className = 'banner-name';
-            // Tên file (bao gồm tên thư mục nếu có) và kích thước đi kèm ở dưới
-            title.innerText = `${filePath} (${size.width}x${size.height})`;
+            title.title = displayName; // Hover để xem full text nếu bị cắt
+            title.innerText = `${displayName}`; 
 
-            wrapper.appendChild(iframe);
+            // Nút Chạy Lại (Refresh)
+            const btnRefresh = document.createElement('button');
+            btnRefresh.className = 'btn-icon';
+            btnRefresh.innerText = '↻';
+            btnRefresh.title = "Chạy lại (Refresh)";
+            btnRefresh.onclick = () => {
+                // Thay thế iframe bằng 1 bản sao mới để restart animation sạch sẽ
+                const newIframe = document.createElement('iframe');
+                newIframe.srcdoc = htmlContent;
+                newIframe.scrolling = "no";
+                iframe.replaceWith(newIframe);
+                iframe = newIframe;
+            };
+
+            controls.appendChild(btnClose);
+            controls.appendChild(title);
+            controls.appendChild(btnRefresh);
+
             item.appendChild(wrapper);
-            item.appendChild(title);
-            
-            // Nối tiếp (Append) vào cuối để có thể ném nhiều zip cùng lúc
+            item.appendChild(controls);
             gallery.appendChild(item); 
         }
     </script>
