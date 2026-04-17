@@ -1,310 +1,114 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
   <title>Banner Viewer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     body {
-      background: #fff;
-      font-family: sans-serif;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 40px 20px 60px;
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #fff;
     }
 
-    /* ── Drop zone ── */
-    #drop-zone {
-      width: 400px;
-      height: 200px;
-      border: 2px dashed #ccc;
-      border-radius: 8px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      cursor: pointer;
-      color: #999;
-      font-size: 14px;
-      transition: border-color .15s, color .15s;
-      margin-bottom: 48px;
-      flex-shrink: 0;
-      user-select: none;
-    }
-    #drop-zone.over { border-color: #555; color: #555; }
-    #drop-zone svg { opacity: .35; }
-    #file-input { display: none; }
-
-    /* ── Error ── */
-    #error { display: none; color: #c00; font-size: 13px; margin-top: -32px; margin-bottom: 24px; }
-
-    /* ── Gallery ── */
-    #gallery {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 32px;
-      justify-content: center;
+    #dropzone {
+      position: fixed;
+      top: 0;
+      left: 0;
       width: 100%;
-      max-width: 1600px;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px dashed #555;
+      cursor: pointer;
     }
 
-    .banner-wrap {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 6px;
+    #dropzone.hover {
+      border-color: #00ffcc;
+      background: rgba(0,255,200,0.05);
     }
-    .banner-label {
-      font-size: 11px;
-      color: #aaa;
-      max-width: 320px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+
+    #dropzone span {
+      font-size: 20px;
+      opacity: 0.7;
     }
-    .banner-frame-outer {
-      border: 1px solid #e5e5e5;
-      overflow: hidden;
+
+    #viewer {
+      display: none;
+      padding: 20px;
+      gap: 20px;
+      flex-wrap: wrap;
     }
-    .banner-frame-outer iframe {
-      display: block;
-      border: none;
-      transform-origin: top left;
+
+    iframe {
+      border: 1px solid #333;
+      background: white;
     }
   </style>
 </head>
 <body>
 
-<div id="drop-zone">
-  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-    <polyline points="17 8 12 3 7 8"/>
-    <line x1="12" y1="3" x2="12" y2="15"/>
-  </svg>
-  <span>Drop ZIP here, or click to browse</span>
-  <input type="file" id="file-input" accept=".zip" />
+<div id="dropzone">
+  <span>Drop ZIP file here</span>
 </div>
 
-<div id="error"></div>
-<div id="gallery"></div>
+<div id="viewer"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
-(function () {
+const dropzone = document.getElementById('dropzone');
+const viewer = document.getElementById('viewer');
 
-  const dropZone  = document.getElementById('drop-zone');
-  const fileInput = document.getElementById('file-input');
-  const gallery   = document.getElementById('gallery');
-  const errorEl   = document.getElementById('error');
+function preventDefaults(e) {
+  e.preventDefault();
+  e.stopPropagation();
+}
 
-  /* ── drag/drop ── */
-  dropZone.addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', () => fileInput.files[0] && process(fileInput.files[0]));
-  dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('over'); });
-  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
-  dropZone.addEventListener('drop', e => {
-    e.preventDefault();
-    dropZone.classList.remove('over');
-    if (e.dataTransfer.files[0]) process(e.dataTransfer.files[0]);
+['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+  dropzone.addEventListener(eventName, preventDefaults, false);
+});
+
+['dragenter', 'dragover'].forEach(() => {
+  dropzone.classList.add('hover');
+});
+
+['dragleave', 'drop'].forEach(() => {
+  dropzone.classList.remove('hover');
+});
+
+dropzone.addEventListener('drop', async (e) => {
+  const file = e.dataTransfer.files[0];
+  if (!file || !file.name.endsWith('.zip')) return;
+
+  const zip = await JSZip.loadAsync(file);
+  viewer.innerHTML = '';
+
+  const files = [];
+
+  zip.forEach((relativePath, zipEntry) => {
+    if (relativePath.endsWith('.html')) {
+      files.push(zipEntry);
+    }
   });
 
-  function showError(msg) { errorEl.textContent = msg; errorEl.style.display = 'block'; }
-  function clearError()   { errorEl.style.display = 'none'; }
-
-  /* ── MIME map ── */
-  const MIME = {
-    png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg', gif:'image/gif',
-    svg:'image/svg+xml', webp:'image/webp', bmp:'image/bmp', ico:'image/x-icon',
-    js:'application/javascript', css:'text/css', json:'application/json',
-    woff:'font/woff', woff2:'font/woff2', ttf:'font/ttf', otf:'font/otf',
-    mp4:'video/mp4', webm:'video/webm', ogg:'audio/ogg', mp3:'audio/mpeg',
-  };
-  function getMime(name) {
-    return MIME[(name.split('.').pop() || '').toLowerCase()] || 'application/octet-stream';
-  }
-
-  /* ArrayBuffer → base64 */
-  function toB64(buf) {
-    const bytes = new Uint8Array(buf);
-    let s = '';
-    for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
-    return btoa(s);
-  }
-
-  /* ── main ── */
-  async function process(file) {
-    clearError();
-    gallery.innerHTML = '';
-
-    if (!file.name.toLowerCase().endsWith('.zip')) {
-      showError('Please drop a .zip file.'); return;
-    }
-
-    let zip;
-    try { zip = await JSZip.loadAsync(file); }
-    catch(e) { showError('Could not read ZIP: ' + e.message); return; }
-
-    /* collect all non-dir entries */
-    const allEntries = {}; // path → JSZip entry
-    zip.forEach((p, entry) => { if (!entry.dir) allEntries[p] = entry; });
-
-    /* find html files */
-    const htmlPaths = Object.keys(allEntries).filter(p => /\.html?$/i.test(p));
-    if (!htmlPaths.length) { showError('No HTML files found in ZIP.'); return; }
-
-    for (const htmlPath of htmlPaths) {
-      /* directory that contains this html file */
-      const dir = htmlPath.includes('/')
-        ? htmlPath.substring(0, htmlPath.lastIndexOf('/') + 1)
-        : '';
-
-      /* load all assets reachable from this html into data URIs */
-      /* we index by every path suffix so relative paths can be resolved */
-      const assetMap = {}; // any relative reference → data URI
-
-      for (const [entryPath, entry] of Object.entries(allEntries)) {
-        if (entryPath === htmlPath) continue;
-
-        /* load unconditionally — banner may reference assets outside its dir */
-        const buf  = await entry.async('arraybuffer');
-        const b64  = toB64(buf);
-        const type = getMime(entryPath);
-        const uri  = `data:${type};base64,${b64}`;
-
-        /* index by full path */
-        assetMap[entryPath] = uri;
-
-        /* index by path relative to the html's directory */
-        if (dir && entryPath.startsWith(dir)) {
-          assetMap[entryPath.slice(dir.length)] = uri;
-        }
-
-        /* index by basename (last resort) */
-        const base = entryPath.split('/').pop();
-        if (!assetMap[base]) assetMap[base] = uri;
-      }
-
-      /* read html */
-      let html = await allEntries[htmlPath].async('text');
-
-      /* inject assets */
-      html = injectAssets(html, assetMap);
-
-      /* detect size */
-      const size = detectSize(html);
-
-      renderBanner(htmlPath, html, size);
-    }
-  }
-
-  /* ── asset URL rewriting ── */
-  function injectAssets(html, map) {
-    function sub(val) {
-      if (!val) return null;
-      if (/^(data:|https?:|\/\/)/.test(val)) return null;
-      const clean = val.split(/[?#]/)[0];
-      return map[clean] || map[decodeURIComponent(clean)] || map[clean.split('/').pop()] || null;
-    }
-
-    return html
-      /* src="..." */
-      .replace(/\bsrc\s*=\s*(['"])([^'"]+)\1/gi, (m, q, v) => {
-        const r = sub(v); return r ? `src=${q}${r}${q}` : m;
-      })
-      /* href="..." (css, etc — skip # anchors) */
-      .replace(/\bhref\s*=\s*(['"])([^'"]+)\1/gi, (m, q, v) => {
-        if (v.startsWith('#')) return m;
-        const r = sub(v); return r ? `href=${q}${r}${q}` : m;
-      })
-      /* url('...') or url("...") */
-      .replace(/\burl\s*\(\s*(['"])([^'"]+)\1\s*\)/gi, (m, q, v) => {
-        const r = sub(v); return r ? `url('${r}')` : m;
-      })
-      /* url(unquoted) */
-      .replace(/\burl\s*\(\s*([^'"\)\s][^\)\s]*)\s*\)/gi, (m, v) => {
-        const r = sub(v); return r ? `url('${r}')` : m;
-      });
-  }
-
-  /* ── banner dimension detection ── */
-  function detectSize(html) {
-    let m;
-
-    /* <meta name="ad.size" content="width=300,height=250"> */
-    m = html.match(/name\s*=\s*["']ad\.size["'][^>]*content\s*=\s*["'][^"']*width\s*=\s*(\d+)[^"']*height\s*=\s*(\d+)/i)
-      || html.match(/content\s*=\s*["'][^"']*width\s*=\s*(\d+)[^"']*height\s*=\s*(\d+)["'][^>]*name\s*=\s*["']ad\.size["']/i);
-    if (m) return { w: +m[1], h: +m[2] };
-
-    /* body style="width:Xpx; height:Ypx" */
-    m = html.match(/<body[^>]*style\s*=\s*["'][^"']*width\s*:\s*(\d+)px[^"']*height\s*:\s*(\d+)px/i);
-    if (m) return { w: +m[1], h: +m[2] };
-    m = html.match(/<body[^>]*style\s*=\s*["'][^"']*height\s*:\s*(\d+)px[^"']*width\s*:\s*(\d+)px/i);
-    if (m) return { w: +m[2], h: +m[1] };
-
-    /* <style> body { width:Xpx; height:Ypx } */
-    m = html.match(/body\s*\{[^}]*width\s*:\s*(\d+)px[^}]*height\s*:\s*(\d+)px/i);
-    if (m) return { w: +m[1], h: +m[2] };
-    m = html.match(/body\s*\{[^}]*height\s*:\s*(\d+)px[^}]*width\s*:\s*(\d+)px/i);
-    if (m) return { w: +m[2], h: +m[1] };
-
-    /* first div with w+h */
-    m = html.match(/<div[^>]*style\s*=\s*["'][^"']*width\s*:\s*(\d+)px[^"']*height\s*:\s*(\d+)px/i);
-    if (m) return { w: +m[1], h: +m[2] };
-
-    /* <canvas width="X" height="Y"> */
-    m = html.match(/<canvas[^>]*\swidth=["']?(\d+)["']?[^>]*\sheight=["']?(\d+)["']?/i);
-    if (m) return { w: +m[1], h: +m[2] };
-
-    return null;
-  }
-
-  /* ── render ── */
-  const MAX_W = 320;
-
-  function renderBanner(path, html, size) {
-    const wrap = document.createElement('div');
-    wrap.className = 'banner-wrap';
-
-    const label = document.createElement('div');
-    label.className = 'banner-label';
-    label.textContent = path;
-    label.title = path;
-
-    const outer = document.createElement('div');
-    outer.className = 'banner-frame-outer';
+  for (const entry of files) {
+    const content = await entry.async('string');
 
     const iframe = document.createElement('iframe');
-    iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
-    iframe.setAttribute('scrolling', 'no');
+    iframe.width = 300;
+    iframe.height = 250;
 
-    if (size) {
-      const scale = Math.min(1, MAX_W / size.w);
-      outer.style.width  = Math.round(size.w * scale) + 'px';
-      outer.style.height = Math.round(size.h * scale) + 'px';
-      iframe.style.width  = size.w + 'px';
-      iframe.style.height = size.h + 'px';
-      iframe.style.transform = `scale(${scale})`;
-    } else {
-      outer.style.width = MAX_W + 'px';
-      iframe.style.width  = '100%';
-      iframe.style.height = '250px';
-    }
+    const blob = new Blob([content], { type: 'text/html' });
+    iframe.src = URL.createObjectURL(blob);
 
-    /* srcdoc avoids cross-origin issues with blob URLs */
-    iframe.srcdoc = html;
-
-    outer.appendChild(iframe);
-    wrap.appendChild(label);
-    wrap.appendChild(outer);
-    gallery.appendChild(wrap);
+    viewer.appendChild(iframe);
   }
 
-})();
+  dropzone.style.display = 'none';
+  viewer.style.display = 'flex';
+});
 </script>
+
 </body>
 </html>
