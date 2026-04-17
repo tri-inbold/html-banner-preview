@@ -44,7 +44,6 @@
 
         #file-input { display: none; }
 
-        /* Container chứa các banners - Gap thu hẹp tối đa */
         #gallery {
             display: flex;
             flex-wrap: wrap;
@@ -76,7 +75,6 @@
             display: block;
         }
 
-        /* Thanh điều khiển */
         .banner-controls {
             display: flex;
             justify-content: space-between;
@@ -96,7 +94,6 @@
             text-align: left;
         }
 
-        /* Nút (Capture, Refresh, Close) */
         .btn-group {
             display: flex;
             gap: 4px;
@@ -124,14 +121,15 @@
 <body>
 
     <div id="instruction">
-        Kéo thả (các) file ZIP vào bất kỳ đâu trên trang
+        Kéo thả file ZIP hoặc file HTML vào bất kỳ đâu trên trang
         <br>
         <span style="font-size: 0.9rem; cursor: pointer; pointer-events: auto; text-decoration: underline;" onclick="document.getElementById('file-input').click()">
             hoặc click để chọn file
         </span>
     </div>
     
-    <input type="file" id="file-input" accept=".zip" multiple>
+    <!-- Cập nhật thẻ input hỗ trợ thêm .html -->
+    <input type="file" id="file-input" accept=".zip, .html" multiple>
     <div id="gallery"></div>
 
     <script>
@@ -162,14 +160,29 @@
         });
 
         function handleFiles(files) {
-            let zipFound = false;
+            let validFileFound = false;
             for (let i = 0; i < files.length; i++) {
-                if (files[i].name.endsWith('.zip')) {
-                    zipFound = true;
-                    processZip(files[i]);
+                const file = files[i];
+                if (file.name.toLowerCase().endsWith('.zip')) {
+                    validFileFound = true;
+                    processZip(file);
+                } else if (file.name.toLowerCase().endsWith('.html')) {
+                    validFileFound = true;
+                    processHtmlFile(file); // Xử lý file html rời
                 }
             }
-            if (zipFound) instruction.style.display = 'none';
+            if (validFileFound) instruction.style.display = 'none';
+        }
+
+        // --- XỬ LÝ FILE HTML ĐƠN LẺ ---
+        async function processHtmlFile(file) {
+            try {
+                const htmlText = await file.text();
+                const initSize = getBannerSize(htmlText);
+                renderBanner(htmlText, file.name, initSize);
+            } catch (error) {
+                alert("Lỗi khi đọc file HTML: " + file.name);
+            }
         }
 
         function getMimeType(filename) {
@@ -241,14 +254,18 @@
                     }
 
                     const initSize = getBannerSize(htmlText);
-                    renderBanner(htmlText, filename, initSize);
+                    
+                    // Lấy Tên File ZIP làm tên Frame. (Nếu có nhiều file html trong 1 zip thì nối thêm tên để phân biệt)
+                    const displayName = htmlFiles.length === 1 ? file.name : `${file.name} - ${filename.split('/').pop()}`;
+
+                    renderBanner(htmlText, displayName, initSize);
                 }
             } catch (error) {
                 alert("Lỗi khi đọc file: " + file.name);
             }
         }
 
-        function renderBanner(htmlContent, filePath, initSize) {
+        function renderBanner(htmlContent, displayName, initSize) {
             const item = document.createElement('div');
             item.className = 'banner-item';
 
@@ -301,13 +318,13 @@
             // -- Giao Diện Điều Khiển --
             const title = document.createElement('div');
             title.className = 'banner-name';
-            title.title = filePath; 
-            title.innerText = filePath;
+            title.title = displayName; 
+            title.innerText = displayName;
 
             const btnGroup = document.createElement('div');
             btnGroup.className = 'btn-group';
 
-            // 1. Nút Capture (SỬA LỖI CHỤP TRẮNG Ở ĐÂY)
+            // 1. Nút Capture
             const btnCapture = document.createElement('button');
             btnCapture.className = 'btn-icon';
             btnCapture.title = 'Chụp ảnh Frame';
@@ -318,7 +335,6 @@
                     const bWidth = wrapper.offsetWidth;
                     const bHeight = wrapper.offsetHeight;
 
-                    // Cách 1: Ưu tiên bắt Canvas (Banner Adobe Animate / CreateJS)
                     const canvasEl = innerDoc.querySelector('canvas');
                     if (canvasEl) {
                         const tempCanvas = document.createElement('canvas');
@@ -326,7 +342,6 @@
                         tempCanvas.height = bHeight;
                         const ctx = tempCanvas.getContext('2d');
                         
-                        // Lót nền (tránh việc canvas bị trong suốt ra ảnh đen/trắng)
                         ctx.fillStyle = '#ffffff'; 
                         try {
                             const bodyBg = iframe.contentWindow.getComputedStyle(innerDoc.body).backgroundColor;
@@ -346,15 +361,13 @@
                         return;
                     }
 
-                    // Cách 2: Nếu là DOM Banner (Google Web Designer, HTML/CSS tay)
-                    // Chui trực tiếp vào trong iframe để chụp cái body của nó
                     const renderedCanvas = await html2canvas(innerDoc.body, {
                         useCORS: true,
                         allowTaint: true,
                         backgroundColor: '#ffffff',
                         width: bWidth,
                         height: bHeight,
-                        scale: 1, // Fix zoom
+                        scale: 1, 
                         x: 0,
                         y: 0
                     });
@@ -368,7 +381,8 @@
 
             function downloadImage(dataUrl) {
                 const link = document.createElement('a');
-                link.download = `capture_${Date.now()}.png`;
+                // Tên file ảnh tải xuống sẽ trùng với tên file ZIP hoặc HTML của nó
+                link.download = `capture_${displayName.replace('.zip', '').replace('.html', '')}_${Date.now()}.png`;
                 link.href = dataUrl;
                 link.click();
             }
