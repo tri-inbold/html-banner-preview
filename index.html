@@ -44,7 +44,7 @@
 
         #file-input { display: none; }
 
-        /* Container chứa các banners - Gap được thu hẹp tối đa */
+        /* Container chứa các banners - Gap thu hẹp tối đa */
         #gallery {
             display: flex;
             flex-wrap: wrap;
@@ -65,6 +65,8 @@
         .iframe-wrapper {
             border: 1px solid #000;
             background-color: #fff;
+            position: relative;
+            overflow: hidden;
         }
 
         iframe {
@@ -94,7 +96,7 @@
             text-align: left;
         }
 
-        /* Nút (Capture, Refresh, Close) dồn hết sang phải, không viền, không nền */
+        /* Nút (Capture, Refresh, Close) */
         .btn-group {
             display: flex;
             gap: 4px;
@@ -136,7 +138,9 @@
         const body = document.body;
         const fileInput = document.getElementById('file-input');
         const gallery = document.getElementById('gallery');
-        const instruction = document.getElementById('instruction');['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        const instruction = document.getElementById('instruction');
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
             body.addEventListener(eventName, e => {
                 e.preventDefault(); e.stopPropagation();
             }, false);
@@ -174,10 +178,8 @@
             return mimeMap[ext] || 'application/octet-stream';
         }
 
-        // Bước 1: Quét nhanh HTML để lấy Size tạm (Pre-render)
         function getBannerSize(html) {
             let width = 300, height = 250;
-            // Scan chuẩn IAB (Google Web Designer, BannerSnack)
             const metaMatch = html.match(/<meta\s+[^>]*name=["']ad\.size["'][^>]*>/i);
             if (metaMatch) {
                 const wMatch = metaMatch[0].match(/width\s*=\s*(\d+)/i);
@@ -186,14 +188,12 @@
                 if (hMatch) height = parseInt(hMatch[1], 10);
                 return { width, height };
             }
-            // Scan chuẩn Adobe Animate HTML5 Canvas
             const canvasMatch = html.match(/<canvas[^>]*width=["']?(\d+)px["']?[^>]*height=["']?(\d+)px["']?[^>]*>/i) || html.match(/<canvas[^>]*width=["'](\d+)["'][^>]*height=["'](\d+)["'][^>]*>/i);
             if (canvasMatch) {
                 width = parseInt(canvasMatch[1], 10);
                 height = parseInt(canvasMatch[2], 10);
                 return { width, height };
             }
-            // Scan dự phòng CSS Style Inline 
             const styleMatch = html.match(/width\s*:\s*(\d+)px.*?height\s*:\s*(\d+)px/i);
             if (styleMatch) {
                 width = parseInt(styleMatch[1], 10);
@@ -241,7 +241,6 @@
                     }
 
                     const initSize = getBannerSize(htmlText);
-                    // Đã LOẠI BỎ hoàn toàn Script Đóng Băng Animation
                     renderBanner(htmlText, filename, initSize);
                 }
             } catch (error) {
@@ -262,16 +261,14 @@
             controls.className = 'banner-controls';
             controls.style.width = initSize.width + 'px';
 
-            let iframe; // Khai báo biến tham chiếu
+            let iframe; 
 
-            // Hàm sinh Iframe chuẩn xác (Chạy lần đầu và để gọi khi Refresh)
             const loadIframe = () => {
-                if (iframe) iframe.remove(); // Xoá trắng iframe cũ nếu có để reset memory
+                if (iframe) iframe.remove(); 
                 iframe = document.createElement('iframe');
                 iframe.scrolling = "no";
                 iframe.srcdoc = htmlContent;
                 
-                // Bước 2: Check Size thực tế một lần nữa khi iframe đã load xong
                 iframe.onload = () => {
                     try {
                         const doc = iframe.contentWindow.document;
@@ -288,19 +285,18 @@
                             if (canvas && canvas.width) { w = canvas.width; h = canvas.height; }
                         }
 
-                        // Nếu tìm thấy kích thước thật chuẩn, ép Size luôn
                         if (w && h && !isNaN(w) && !isNaN(h)) {
                             wrapper.style.width = w + 'px';
                             wrapper.style.height = h + 'px';
                             controls.style.width = w + 'px';
                         }
-                    } catch(e) { } // Bỏ qua nếu dính lỗi cross-origin
+                    } catch(e) { }
                 };
                 
                 wrapper.appendChild(iframe);
             };
 
-            loadIframe(); // Chạy lần đầu
+            loadIframe(); 
 
             // -- Giao Diện Điều Khiển --
             const title = document.createElement('div');
@@ -311,35 +307,78 @@
             const btnGroup = document.createElement('div');
             btnGroup.className = 'btn-group';
 
-            // 1. Nút Capture (Không dừng animation)
+            // 1. Nút Capture (SỬA LỖI CHỤP TRẮNG Ở ĐÂY)
             const btnCapture = document.createElement('button');
             btnCapture.className = 'btn-icon';
             btnCapture.title = 'Chụp ảnh Frame';
             btnCapture.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
             btnCapture.onclick = async () => {
                 try {
-                    wrapper.style.border = 'none'; 
-                    const canvas = await html2canvas(wrapper, { useCORS: true, allowTaint: true, backgroundColor: null });
-                    wrapper.style.border = '1px solid #000'; 
+                    const innerDoc = iframe.contentDocument || iframe.contentWindow.document;
+                    const bWidth = wrapper.offsetWidth;
+                    const bHeight = wrapper.offsetHeight;
+
+                    // Cách 1: Ưu tiên bắt Canvas (Banner Adobe Animate / CreateJS)
+                    const canvasEl = innerDoc.querySelector('canvas');
+                    if (canvasEl) {
+                        const tempCanvas = document.createElement('canvas');
+                        tempCanvas.width = bWidth;
+                        tempCanvas.height = bHeight;
+                        const ctx = tempCanvas.getContext('2d');
+                        
+                        // Lót nền (tránh việc canvas bị trong suốt ra ảnh đen/trắng)
+                        ctx.fillStyle = '#ffffff'; 
+                        try {
+                            const bodyBg = iframe.contentWindow.getComputedStyle(innerDoc.body).backgroundColor;
+                            if (bodyBg && bodyBg !== 'rgba(0, 0, 0, 0)' && bodyBg !== 'transparent') ctx.fillStyle = bodyBg;
+                            
+                            const container = innerDoc.getElementById('animation_container') || canvasEl.parentElement;
+                            if (container) {
+                                const cBg = iframe.contentWindow.getComputedStyle(container).backgroundColor;
+                                if (cBg && cBg !== 'rgba(0, 0, 0, 0)' && cBg !== 'transparent') ctx.fillStyle = cBg;
+                            }
+                        } catch(e) {}
+                        
+                        ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+                        ctx.drawImage(canvasEl, 0, 0, tempCanvas.width, tempCanvas.height);
+                        
+                        downloadImage(tempCanvas.toDataURL('image/png'));
+                        return;
+                    }
+
+                    // Cách 2: Nếu là DOM Banner (Google Web Designer, HTML/CSS tay)
+                    // Chui trực tiếp vào trong iframe để chụp cái body của nó
+                    const renderedCanvas = await html2canvas(innerDoc.body, {
+                        useCORS: true,
+                        allowTaint: true,
+                        backgroundColor: '#ffffff',
+                        width: bWidth,
+                        height: bHeight,
+                        scale: 1, // Fix zoom
+                        x: 0,
+                        y: 0
+                    });
                     
-                    const link = document.createElement('a');
-                    link.download = `screenshot_${Date.now()}.png`;
-                    link.href = canvas.toDataURL('image/png');
-                    link.click();
+                    downloadImage(renderedCanvas.toDataURL('image/png'));
+
                 } catch (err) {
-                    wrapper.style.border = '1px solid #000';
                     alert("Lỗi chụp ảnh: " + err.message);
                 }
             };
 
-            // 2. Nút Refresh (Tạo iFrame hoàn toàn mới)
+            function downloadImage(dataUrl) {
+                const link = document.createElement('a');
+                link.download = `capture_${Date.now()}.png`;
+                link.href = dataUrl;
+                link.click();
+            }
+
+            // 2. Nút Refresh 
             const btnRefresh = document.createElement('button');
             btnRefresh.className = 'btn-icon';
             btnRefresh.title = 'Chạy lại Animation';
             btnRefresh.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path></svg>';
-            btnRefresh.onclick = () => {
-                loadIframe(); // Giải pháp reset sạch nhất
-            };
+            btnRefresh.onclick = () => { loadIframe(); };
 
             // 3. Nút Đóng
             const btnClose = document.createElement('button');
@@ -348,7 +387,6 @@
             btnClose.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
             btnClose.onclick = () => item.remove();
 
-            // Ráp nút vào Group
             btnGroup.appendChild(btnCapture);
             btnGroup.appendChild(btnRefresh);
             btnGroup.appendChild(btnClose);
