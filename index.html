@@ -39,7 +39,7 @@
             border: 1px solid #000; background-color: #fff;
             position: relative; overflow: hidden;
         }
-        iframe { width: 100%; height: 100%; border: none; display: block; }
+        iframe { border: none; display: block; overflow: hidden; }
         .banner-controls { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
         .banner-name {
             font-size: 11px; color: #000; font-family: monospace;
@@ -231,27 +231,50 @@
         }
 
         function getBannerSize(html) {
-            let width = 300, height = 250;
+            // 1. Standard IAB meta ad.size tag (e.g. CreateJS / DoubleClick banners)
             const metaMatch = html.match(/<meta\s+[^>]*name=["']ad\.size["'][^>]*>/i);
             if (metaMatch) {
                 const wMatch = metaMatch[0].match(/width\s*=\s*(\d+)/i);
                 const hMatch = metaMatch[0].match(/height\s*=\s*(\d+)/i);
-                if (wMatch) width = parseInt(wMatch[1], 10);
-                if (hMatch) height = parseInt(hMatch[1], 10);
-                return { width, height };
+                if (wMatch && hMatch) {
+                    return { width: parseInt(wMatch[1], 10), height: parseInt(hMatch[1], 10) };
+                }
             }
-            const canvasMatch = html.match(/<canvas[^>]*width=["']?(\d+)px["']?[^>]*height=["']?(\d+)px["']?[^>]*>/i) || html.match(/<canvas[^>]*width=["'](\d+)["'][^>]*height=["'](\d+)["'][^>]*>/i);
+
+            // 2. Google Web Designer: creativeProperties JSON inside gwd-admetadata script tag
+            const gwdMeta = html.match(/<script[^>]*type=["']text\/gwd-admetadata["'][^>]*>([\s\S]*?)<\/script>/i);
+            if (gwdMeta) {
+                try {
+                    const meta = JSON.parse(gwdMeta[1]);
+                    const cp = meta.creativeProperties;
+                    if (cp && cp.maxWidth && cp.maxHeight) {
+                        return { width: cp.maxWidth, height: cp.maxHeight };
+                    }
+                } catch(e) {}
+            }
+
+            // 3. Google Web Designer: data-gwd-width / data-gwd-height on gwd-page element
+            const gwdW = html.match(/data-gwd-width=["'](\d+)(?:px)?["']/i);
+            const gwdH = html.match(/data-gwd-height=["'](\d+)(?:px)?["']/i);
+            if (gwdW && gwdH) {
+                return { width: parseInt(gwdW[1], 10), height: parseInt(gwdH[1], 10) };
+            }
+
+            // 4. Canvas element with explicit width/height
+            const canvasMatch = html.match(/<canvas[^>]*width=["']?(\d+)px["']?[^>]*height=["']?(\d+)px["']?[^>]*>/i)
+                             || html.match(/<canvas[^>]*width=["'](\d+)["'][^>]*height=["'](\d+)["'][^>]*>/i);
             if (canvasMatch) {
-                width = parseInt(canvasMatch[1], 10);
-                height = parseInt(canvasMatch[2], 10);
-                return { width, height };
+                return { width: parseInt(canvasMatch[1], 10), height: parseInt(canvasMatch[2], 10) };
             }
-            const styleMatch = html.match(/width\s*:\s*(\d+)px.*?height\s*:\s*(\d+)px/i);
+
+            // 5. Inline style width + height (last resort)
+            const styleMatch = html.match(/width\s*:\s*(\d+)px[^}]*height\s*:\s*(\d+)px/i);
             if (styleMatch) {
-                width = parseInt(styleMatch[1], 10);
-                height = parseInt(styleMatch[2], 10);
+                const w = parseInt(styleMatch[1], 10), h = parseInt(styleMatch[2], 10);
+                if (w && h) return { width: w, height: h };
             }
-            return { width, height };
+
+            return { width: 300, height: 250 };
         }
 
         async function processZip(file) {
@@ -320,6 +343,8 @@
                 if (iframe) iframe.remove(); 
                 iframe = document.createElement('iframe');
                 iframe.scrolling = "no";
+                iframe.style.width = initSize.width + 'px';
+                iframe.style.height = initSize.height + 'px';
                 iframe.srcdoc = htmlContent;
                 
                 iframe.onload = () => {
@@ -328,20 +353,45 @@
                         let w = initSize.width;
                         let h = initSize.height;
 
+                        // 1. Standard IAB meta ad.size
                         const meta = doc.querySelector('meta[name="ad.size"]');
                         if (meta) {
                             const wM = meta.content.match(/width\s*=\s*(\d+)/i);
                             const hM = meta.content.match(/height\s*=\s*(\d+)/i);
                             if(wM && hM) { w = parseInt(wM[1]); h = parseInt(hM[1]); }
                         } else {
-                            const canvas = doc.querySelector('canvas');
-                            if (canvas && canvas.width) { w = canvas.width; h = canvas.height; }
+                            // 2. Google Web Designer: gwd-admetadata JSON
+                            const gwdScript = doc.querySelector('script[type="text/gwd-admetadata"]');
+                            if (gwdScript) {
+                                try {
+                                    const gwdMeta = JSON.parse(gwdScript.textContent);
+                                    const cp = gwdMeta.creativeProperties;
+                                    if (cp && cp.maxWidth && cp.maxHeight) {
+                                        w = cp.maxWidth; h = cp.maxHeight;
+                                    }
+                                } catch(e) {}
+                            }
+                            // 3. Google Web Designer: data-gwd-width/height on gwd-page
+                            if (!w || !h) {
+                                const gwdPage = doc.querySelector('[data-gwd-width][data-gwd-height]');
+                                if (gwdPage) {
+                                    w = parseInt(gwdPage.getAttribute('data-gwd-width')) || w;
+                                    h = parseInt(gwdPage.getAttribute('data-gwd-height')) || h;
+                                }
+                            }
+                            // 4. Canvas element
+                            if (!w || !h) {
+                                const canvas = doc.querySelector('canvas');
+                                if (canvas && canvas.width) { w = canvas.width; h = canvas.height; }
+                            }
                         }
 
                         if (w && h && !isNaN(w) && !isNaN(h)) {
                             wrapper.style.width = w + 'px';
                             wrapper.style.height = h + 'px';
                             controls.style.width = w + 'px';
+                            iframe.style.width = w + 'px';
+                            iframe.style.height = h + 'px';
                         }
                     } catch(e) { }
                 };
